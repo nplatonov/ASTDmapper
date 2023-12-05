@@ -3,3 +3,4 @@
 !20_create_grid.R
 !30_processing_by_seasons.R
 _*.*
+*.knitted
