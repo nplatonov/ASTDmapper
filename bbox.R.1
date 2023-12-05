@@ -1,0 +1,160 @@
+#' ---
+#' echo: true
+#' ---
+#'
+#' Подгружаем основной пакет для работы.
+#' Автоматически подгрузятся зависимости, прежде всего, **`sf`**.
+#+
+require(ursa)
+isKnitr <- ursa:::.isKnitr()
+#' Читаем эксель (CSV) и смотрим структуру, обращая внимание на названия
+#' столбцов, с долготой и широтой.
+#+
+# a <- read.csv("Example-data-3_Atlantic.csv")
+a <- read.csv("Bananas_import-export.csv.gz")
+colnames(a)[grep("latitude",colnames(a))] <- "latitude"
+#' Преобразовываем в пространственный объект (simple features), явно указывая, 
+#' где долгота (сперва), а где широта (затем).
+#+
+a <- sf::st_as_sf(a,coords=c("longitude","latitude"),crs=4326)
+#' Был запрос обрезать данные по study area.
+#' Лучше всего сформировать study area в виде сетки,
+#' тогда один пространственный объект для двух задач.
+#' Study area под рукой нет, поэтому сгенерируем ее.
+#' Потом обрежем по ней исходные данные.
+#' Ненужных данных по AIS много, поэтому чем раньше обрезать,
+#' тем меньший массив данных обрабатывать
+#+
+if (T) {
+   session_grid(NULL)
+   aoi <- ursa:::spatialize(c(-30,20,5,50))
+   spatial_count(a) |> print()
+   opW <- options(warn=1)
+   a <- spatial_intersection(aoi,a)
+  # a <- spatial_intersection(aoi,spatial_transform(a,aoi))
+   spatial_count(a) |> print()
+   glance(aoi,blank="white",coast.fill="#00000010")
+}
+q()
+#' Время - во внутренний форма. Сортировка по кораблями и времени регистрации
+#+
+a$date_time_utc <- as.POSIXct(a$date_time_utc,format="%d/%m/%Y %H:%M",tz="UTC")
+a <- a[with(a,order(shipid,date_time_utc)),]
+#' Можно сохранить эти данные для последующей загрузки в QGIS
+#+
+# spatial_write(a,"Example-data-3_Atlantic.geojson")
+#' Возможно, какие-то будут выбросы на сушу. Исключаем их
+#+
+if (T) {
+   land <- spatial_read(file.path("D:/users/platt/shapefile/auxiliary"
+                                 ,"naturalearth/5.1.2/10m_physical/ne_10m_land.shp"))
+   spatial_count(a) |> print()
+   a <- a[!as.logical(sapply(sf::st_intersects(a,land),length)),]
+  # a <- a[!a$shipid %in% spatial_intersection(a,land)$shipid,]
+   spatial_count(a) |> print()
+}
+#' Возможно, нужно будет создавать теплокарты по месяцам.
+#' Здесь рассмотрим выделение периода с 05 июня по 25 июня, включительно.
+#+
+if (T) {
+   print(range(a$date))
+   a <- a[as.Date(a$date_time_utc)>=as.Date("2017-06-05") &
+          as.Date(a$date_time_utc)<=as.Date("2017-06-25"),]
+   print(range(a$date))
+}
+#' Возможно, нужно исключить корабли, подававшие сигнал менее 2-3 раз.
+#' Здесь оставим лишь те, у кого больше 400 сигналов за наш период
+#+
+ta <- table(a$shipid)
+ta <- ta[ta>400]
+if (T) {
+   print(ta)
+   print(spatial_count(a))
+   a <- a[as.character(a$shipid) %in% names(ta),]
+   print(spatial_count(a))
+}
+#' Создадим траектории из точек. Нужно лишь для визуализации
+tr <- segmentize(a,by=a$shipid)
+#' Создадим сетку. Допустим, нужна проекция 6931 и ячейка 5 км.
+#' Другой способ - это когда исследуемая территория в виде сетки.
+#' Если не было фильтрации данных ранее, автоматическая обрезка осуществится на этом шаге.
+#+
+a <- ursa:::spatialize(a,resetGrid=TRUE,crs=6931)
+#glance(a["shipid"],style="mapnik")
+session_grid(regrid(res=5000,expand=1.25))
+g1 <- ursa_new(NA_integer_,bandname="cell")
+ursa_value(g1) <- seq(prod(dim(g1)))+10000L
+#' Раскидывание данных AIS по ячейкам сетки
+ursa:::.elapsedTime("intersection -- start")
+b <- spatial_intersection(g1,a)
+ursa:::.elapsedTime("intersection -- finish")
+str(b)
+#' Получение характеристик отдельного корабля для каждой ячейки
+#+
+cond <- list(cell=b$cell,shipid=b$shipid)
+d <- aggregate(list(duration=b$sec_nextpoint),cond,sum)
+d$duration <- d$duration/(24*60*60)
+d$firstentry <- aggregate(list(x=b$date_time_utc),cond,min)$x
+d$lastentry <- aggregate(list(x=b$date_time_utc),cond,max)$x
+d
+#' Получение характеристик для каждой ячейки по всем кораблям (без весов)
+#+
+d2 <- aggregate(list(duration=d$duration),by=list(cell=d$cell),sum)
+d2
+#'
+#' Визуализация по каждому кораблю
+#+
+ct <- colorize(d$duration,stretch="positive") |> ursa_colortable()
+if (FALSE) {
+   b <- by(a,a$shipid,\(a2) {
+     # print(series(spatial_data(a2)))
+      b2 <- allocate(a2["shipid"],fun="n")
+      print(b2)
+      list(b2)
+   }) |> as_ursa()
+   b
+   #display(b,blank="white",decor=FALSE)
+}
+dim0 <- c(600,600)
+session_grid(dim0)
+compose_open(length(ta),legend="right")
+if (!isKnitr)
+   cat("regionalization")
+ret <- by(d,d$shipid,\(ship) {
+   if (!isKnitr)
+      cat(".")
+   a2 <- a[a$shipid %in% ship$shipid,]
+   a2 <- a2[order(a2$date_time_utc),]
+  # print(spatial_count(a2))
+  # print(series(spatial_data(a2[,c("shipid","date_time_utc","sec_nextpoint")])))
+  # str(segmentize(a2["date_time_utc"],connect="consequent"))
+  # q()
+   g2 <- g1
+   ind <- ursa_value(g1) %in% ship$cell
+   ursa_value(g2)[!ind] <- NA
+   ursa_value(g2)[ind] <- ship$duration
+   g2 <- ursa_crop(g2,border=1)
+   session_grid(consistent_grid(g2,dim0))
+   panel_new("white")
+   panel_raster(g2,pal=ct)
+  # panel_plot(segmentize(a2))
+   panel_plot(tr[tr$shipid %in% ship$shipid,])
+   panel_plot(a2)
+   panel_decor(coast.fill="#00000010")
+   panel_annotation(paste("shipid:",as.character(head(ship$shipid,1))),pos="topright")
+  # str(ursa_value(g1) %in% ship$cell)
+  # g2 <- g1[g1 %in% ship$cell]
+  # print(g2)
+})
+if (!isKnitr)
+   cat(" done!\n")
+compose_legend(ct,units="days per period")
+compose_close(render=TRUE)
+#' Теплокарта для исследуемого периода
+#+
+g3 <- g1
+ind <- ursa_value(g1) %in% d2$cell
+ursa_value(g3)[!ind] <- NA
+ursa_value(g3)[ind] <- d2$duration
+g3 <- ursa_crop(g3,border=1)
+display(g3,stretch="positive",blank="white",coast.fill="#00000010")

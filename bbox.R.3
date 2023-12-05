@@ -1,0 +1,234 @@
+require(ursa)
+aisfile <- "Bananas_import-export.csv.gz"
+landfile <- "simplified_land_polygons.shp"
+aoifile <- file.path("20km","LME_2013_grid.shp")
+vmax <- 20 ## km/h
+occasionalEnries <- 10L
+stopifnot(file.exists(spatial_dir(landfile)))
+stopifnot(file.exists(spatial_dir(aisfile)))
+stopifnot(file.exists(spatial_dir(aoifile)))
+'speedFilter' <- function(loc,vmax=vmax*10/36,verbose=FALSE) {
+   if (verbose)
+      print(spatial_count(loc))
+   loc <- loc[!duplicated(loc$date_time_utc),]
+   if (verbose)
+      print(spatial_count(loc))
+   if (verbose) {
+      session_grid(loc,expand=1.1)
+      cl <- compose_coastline(detail="f",fill="#FF000030")
+      compose_open(2)
+      compose_panel(loc["shipid"],blank="white")
+      compose_panel(segmentize(loc),blank="white")
+      compose_close()
+   }
+   if (verbose) {
+      tr <- segmentize(loc,connect="consequent")
+      tr$dur <- as.numeric(tr$date_time_utc-tr$date_time_utc.1,"hours")
+      tr$length <- spatial_length(tr)*1e-3
+      tr$speed <- tr$length/tr$dur
+      print(summary(tr$dur))
+      print(summary(tr$length))
+      print(summary(tr$speed))
+     # lv <- plutil::lavielle(tr$speed,x=tr$date_time_utc,digits=2) ## for zero speeds
+     # print(lv)
+      plot(tr$date_time_utc,tr$speed,type="l")
+      abline(h=0,col="grey90")
+      points(tr$date_time_utc,tr$speed,pch=19,cex=0.3)
+   }
+   loc <- spatial_transform(loc,4326)
+   xy <- spatial_coordinates(loc)
+   a <- data.frame(dtime=loc$date_time_utc,lc="3",lon=xy[,1],lat=xy[,2])
+   if (F)
+      f <- try(stop("skip sda-filter"))
+   else {
+      if (verbose)
+         cat("argosfilter::sdafilter():\n")
+      opW <- options(warn=ifelse(verbose,1,-1))
+      f <- try(with(a,argosfilter::sdafilter(lat=lat,lon=lon,dtime=dtime,lc=lc
+                                            ,vmax=vmax
+                                            ,ang=c(15,25)
+                                            ,distlim=c(2500,5000)))
+              ,silent=!verbose)
+      options(opW)
+   }
+   if (inherits(f,"try-error")) {
+      if (verbose) {
+         cat(f)
+         cat("argosfilter::vmask():\n")
+      }
+      opW <- options(warn=ifelse(verbose,1,-1))
+      f <- try(with(a,argosfilter::vmask(lat=lat,lon=lon,dtime=dtime,vmax=vmax))
+              ,silent=!verbose)
+      options(opW)
+      if (inherits(f,"try-error")) {
+         if (verbose)
+            cat(f)
+      }
+   }
+   if (!inherits(f,"try-error")) {
+      if (verbose)
+         print(table(f))
+      ind <- which(f %in% c("not","end_location"))
+      loc <- loc[ind,]
+      if (verbose)
+         print(spatial_count(loc))
+      if (verbose) {
+         tr <- segmentize(loc,connect="consequent")
+         tr$dur <- as.numeric(tr$date_time_utc-tr$date_time_utc.1,"hours")
+         tr$length <- spatial_length(tr)*1e-3
+         tr$speed <- tr$length/tr$dur
+         print(summary(tr$dur))
+         print(summary(tr$length))
+         print(summary(tr$speed))
+         cl <- compose_coastline(detail="f",fill="#FF000030")
+         compose_open(2)
+         compose_panel(loc["shipid"],blank="white")
+         compose_panel(segmentize(loc),blank="white")
+         compose_close()
+      }
+   }
+   loc
+}
+'landFilter' <- function(a) {
+  # spatial_write(a,"Bananas_import-export.geojson",compress=TRUE)
+  # land <- spatial_read(file.path("D:/users/platt/shapefile/auxiliary"
+  #                               ,"naturalearth/5.1.2/10m_physical/ne_10m_land.shp"))
+   land <- spatial_read(landfile)
+   land <- spatial_transform(land,a)
+   print(c('CRS AIS'=spatial_crs(a)))
+   print(c('CRS Land'=spatial_crs(land)))
+   print(c('Records before land cropping'=spatial_count(a)))
+   a <- a[!as.logical(sapply(sf::st_intersects(a,land),length)),]
+  # a <- a[!a$shipid %in% spatial_intersection(a,land)$shipid,]
+   print(c('Records after land cropping'=spatial_count(a)))
+   a
+}
+'step1' <- function() {
+   #unique(spatial_area(aoi)*1e-6)
+   ursa:::.elapsedTime("AIS reading -- start")
+   a <- read.csv(aisfile)
+   ursa:::.elapsedTime("AIS reading -- finish")
+   colnames(a)[grep("latitude",colnames(a))] <- "latitude"
+   a <- sf::st_as_sf(a,coords=c("longitude","latitude"),crs=4326)
+   ursa:::.elapsedTime("AIS is in spatial format now")
+  # print(c('AIS CRS'=spatial_crs(a)))
+   # summary(spatial_coordinates(a)) |> print()
+  # a <- spatial_transform(a,spatial_crs(aoi))
+  # spatial_crs(a) |> print()
+   # summary(spatial_coordinates(a)) |> print()
+   d3 <- as.POSIXct(a$date_time_utc,format="%Y-%m-%d %H:%M:%S",tz="UTC")
+   if (all(is.na(d3)))
+      d3 <- as.POSIXct(a$date_time_utc,format="%d/%m/%Y %H:%M",tz="UTC")
+   if (all(is.na(d3)))
+      stop("Please check datetime format in source")
+   ursa:::.elapsedTime("datetime is in POSIX format now")
+   a$date_time_utc <- d3
+   a <- a[with(a,order(shipid,date_time_utc)),]
+   ursa:::.elapsedTime("Land excluding -- start")
+   a <- landFilter(a)
+   ursa:::.elapsedTime("Land excluding -- finish")
+   if (T)
+      return(a)
+   spatial_write(a,"interim.geojson",compress=TRUE)
+   0L
+}
+'step2' <- function(a,devel=FALSE) {
+   ursa:::.elapsedTime("AOI reading -- start")
+   aoi <- spatial_read(aoifile)
+   ursa:::.elapsedTime("AOI reading -- finish")
+   g1 <- allocate(spatial_centroid(aoi),resetGrid=TRUE)
+   print(c('AOI CRS'=spatial_crs(aoi)))
+   if (missing(a)) {
+      ursa:::.elapsedTime("geojson read -- start")
+      a <- spatial_read("interim.geojson.geojson")
+      ursa:::.elapsedTime("geojson read -- finish")
+   }
+  # a$shipid <- sprintf("%04d",a$shipid)
+  # print(c('AIS CRS'=spatial_crs(a)))
+   if (F) {
+      spatial_count(a) |> print()
+      a <- spatial_intersection(a,spatial_union(aoi))
+      spatial_count(a) |> print()
+   }
+   season <- format(a$date_time_utc,"%Y%m")
+   print(c(seasons=table(season)))
+   print(c('Records for all seasons'=spatial_count(a)))
+   res <- by(a,season,\(a2) {
+      if (devel & spatial_count(a2)<500000)
+         return(NULL)
+      s <- format(a2$date_time_utc[1],"%Y%m")
+      message(s,":")
+      print(c('Records before AOI cropping'=spatial_count(a2)))
+      ursa:::.elapsedTime("seeding within AOI -- start")
+      b2 <- spatial_intersection(aoi,spatial_transform(a2,aoi))
+      ursa:::.elapsedTime("seeding within AOI -- finish")
+      print(c('Records after AOI cropping'=spatial_count(b2)))
+      tb <- table(b2$shipid)
+      tb <- tb[tb>occasionalEnries]
+      if (devel)
+         tb <- tb[tb>400]
+      b2 <- b2[as.character(b2$shipid) %in% sample(names(tb)),]
+      print(c('Records with long-term stay in AOI'=spatial_count(b2)))
+      pb <- ursaProgressBar(tb)
+      ursa:::.elapsedTime("speed filter -- start")
+      c2 <- by(b2,b2$shipid,\(b3) {
+         setUrsaProgressBar(pb,title=b3$shipid[1])
+        # spatial_write(b3,sprintf("shipid%04d.sqlite",b3$shipid[1]))
+         speedFilter(b3)
+      })
+      close(pb)
+      ursa:::.elapsedTime("speed filter -- finish")
+      ursa:::.elapsedTime("binding -- start")
+      c2 <- spatial_bind(c2)
+      ursa:::.elapsedTime("binding -- finish")
+      ursa:::.elapsedTime("rds")
+      saveRDS(c2,paste0("interim",s,".rds"))
+      ursa:::.elapsedTime("fst")
+      try(fst::write_fst(c2,paste0("interim",s,".fst")))
+      ursa:::.elapsedTime("qs")
+      try(qs::qsave(c2,paste0("interim",s,".qs")))
+      ursa:::.elapsedTime("writing spatial -- start")
+      spatial_write(c2,paste0("interim",s,".sqlite"))
+      ursa:::.elapsedTime("writing spatial -- finish")
+      ursa:::.elapsedTime(paste("completed for",sQuote(s),"season"))
+   })
+   if (T)
+      return(res)
+   0L
+}
+'step3' <- function(res) {
+   if (missing(res)) {
+      stop("TODO for reading interim files")
+   }
+   ret <- lapply(res,\(c2) {
+      cond <- list(cell=c2$cell,shipid=c2$shipid)
+      ursa:::.elapsedTime("aggregating individual ships -- start")
+      d <- aggregate(list(duration=c2$sec_nextpoint),cond,sum)
+      d$duration <- d$duration/(24*60*60)
+      d$firstentry <- aggregate(list(x=c2$date_time_utc),cond,min)$x
+      d$lastentry <- aggregate(list(x=c2$date_time_utc),cond,max)$x
+      ursa:::.elapsedTime("aggregating individual ships -- finish")
+      print(series(d))
+      ursa:::.elapsedTime("aggregating all ships -- start")
+      d2 <- aggregate(list(duration=d$duration),by=list(cell=d$cell),sum)
+      ursa:::.elapsedTime("aggregating all ships -- finish")
+      print(series(d2))
+      r2 <- g1
+      save(r2,d2,file="interim.Rdata")
+      ind <- ursa_value(r2) %in% d2$cell
+      ursa_value(r2)[!ind] <- NA
+      ursa_value(r2)[ind] <- d2$duration
+      fileout <- paste0("heatmap",s,".tif")
+      ursa_write(r2,fileout)
+      r3 <- ursa_crop(r2,border=1)
+      print(r3)
+      display(r3,fileout=gsub("\\..+$",".png",fileout),bpp=8
+             ,stretch="positive",blank="white",coast.fill="#00000010")
+      ursa:::.elapsedTime(paste("completed for",sQuote(s),"season"))
+   })
+   0L
+}
+invisible({
+  # result <- step1() |> step2() |> step3()
+   result <- step3()
+})

@@ -5,16 +5,15 @@ release <- digest::digest(Sys.getenv("USERNAME"),"crc32")!="423c1bf6"
 if (release) {
    separator <- ";"
    aisfile <- "C:\\Boris\\PAMPAN\\compatibility\\ASTD work\\ASTD_area_level3_202302.csv"
-   landfile <- "C:\\Boris\\PAMPAN\\compatibility\\ASTD work\\simplified-land-polygons-complete-3857\\simplified-land-polygons-complete-3857\\simplified_land_polygons.shp"
    aoifile <- "C:\\Boris\\PAMPAN\\compatibility\\ASTD work\\LME_2013_polygon.shp"
    gridfile <- "C:\\Boris\\PAMPAN\\compatibility\\ASTD work\\LME_2013_grid.shp.zip"
    vmax <- 60 ## km/h
    occasionalEnries <- 10L
 } else {
    separator <- ","
-   aisfile <- "D:\\RAS\\2023\\ArcNet\\ASTD\\Bananas_import-export.csv"
+   aisfile <- "Bananas_import-export.csv"
    aoifile <- "study_area.sqlite"
-   gridfile <- file.path("20km","LME_2013_grid.shp")
+   gridfile <- "LME_2013_grid.shp"
    vmax <- 20 ## km/h
    occasionalEnries <- 10L
 }
