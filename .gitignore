@@ -9,6 +9,7 @@
 *.sqlite
 *.sqlite.gz
 *.pdf
+*.qgz
 interim*
 heatmap*
 !10_define_study_area.R
