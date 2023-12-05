@@ -1,7 +1,7 @@
 if (!require(ursa)) {
    stop("Needs required packages 'digest', 'ursa' and 'fasterize' and optional package 'qs'")
 }
-release <- digest::digest(Sys.getenv("USERNAME"),"crc32")!="423c1bf6"
+release <- FALSE # (digest::digest(Sys.getenv("USERNAME"),"crc32")=="423c1bf6") ## devel
 if (release) {
    separator <- ";"
    dateTimeFormat <- "%Y-%m-%d %H:%M:%S"
@@ -13,8 +13,7 @@ if (release) {
 } else {
    separator <- ","
    dateTimeFormat <- "%d/%m/%Y %H:%M"
-   aisfile <- "bananas/Phistachos_import-export.csv"
-  # aisfile <- "Bananas_import-export.csv"
+   aisfile <- "./Phistachos_import-export.csv"
    aoifile <- "study_area.sqlite"
    gridfile <- "LME_2013_grid.sqlite"
    vmax <- 12 ## km/h

@@ -1,3 +1,7 @@
+---
+# echo: true
+---
+
 # ASTDmapper
 
 Scripts for processing ASTD AIS data
@@ -10,7 +14,7 @@ Under license agreement, only fictive AIS data is used here.
 
 ### Land mask
 
-Land is used for terrestial masking of marine traffic 
+Land is used for terrestrial masking of marine traffic.
 
 [Land polygons](https://osmdata.openstreetmap.de/data/land-polygons.html) of the [Data Derived from OpenStreetMap for Download](https://osmdata.openstreetmap.de/) project is used for land mask.
 
@@ -56,7 +60,7 @@ Use R-script
 
 + `10_define_study_area.R`
 
-to cut land mask. This is spatial difference between PAME LME polygons and land polygons. 
+to cut land areas. This is spatial difference between geometries of PAME LME polygons and land polygons. 
 
 Output is gz-compressed `study_area.sqlite`.
 
@@ -88,18 +92,19 @@ for data filtering and map producing.
 
 ### Parameterization
 
-Two branches (or, user profiles) are managed by `release` variable. If `release` is `FALSE`, then fictive AIS data in this repository are used. In production, use `TRUE`. 
+Two branches (or, user profiles) are managed by `release` variable. If `release` is `FALSE`, then fictive AIS data `Phistachos_import-export.csv` is used. In production, use `TRUE`. 
 
 In source: 
 
 ```{r, eval=FALSE}
-release <- digest::digest(Sys.getenv("USERNAME"),"crc32")!="423c1bf6"
+release <- FALSE
 ```
 
-But you can specify explicitly, `release <- TRUE` or `release <- FALSE`.
+You need specify explicitly, `release <- TRUE` or `release <- FALSE`.
 
 + `aisfile` - filename of AIS data in comma-separated format. It can be compressed (gzip, bzip2, xz). . File extension for compressed file (e.g., \*.gz) can be omitted.
 + `separator` - separator for `aisfile` comma-separated file
++ `dateTimeFormat` - date + time format for conversion character time to POSIX time.
 + `aoifile` - filename for study area (area of interest, AOI), in GDAL format with polygonal geometry. For compressed file (zip, gzip, bzip2, xz) compression file extension (e.g., \*.zip, \*.gz) can be omitted. In this repository `study_area.sqlite` is used and is produced by `10_define_study_area.R` script.
 + `gridfile` - filename for grid cells, in GDAL format with polygonal geometry. For compressed file (zip, gzip, bzip2, xz) compression file extension (e.g., \*.zip, \*.gz) can be omitted. In this repository `LME_2013_grid.sqlite` is used and is produced by `20_create_grid.R` script.
 + `vmax` - maximal allowed vessel speed, in kilometers per hour.
@@ -108,6 +113,7 @@ But you can specify explicitly, `release <- TRUE` or `release <- FALSE`.
 ```{r eval=FALSE}
 if (release) {
    separator <- ";"
+   dateTimeFormat <- "%Y-%m-%d %H:%M:%S"
    aisfile <- "C:\\Boris\\PAMPAN\\compatibility\\ASTD work\\ASTD_area_level3_202302.csv"
    aoifile <- "C:\\Boris\\PAMPAN\\compatibility\\ASTD work\\LME_2013_polygon.shp"
    gridfile <- "C:\\Boris\\PAMPAN\\compatibility\\ASTD work\\LME_2013_grid.shp.zip"
@@ -115,17 +121,18 @@ if (release) {
    occasionalEnries <- 10L
 } else {
    separator <- ","
-   aisfile <- "Bananas_import-export.csv"
+   dateTimeFormat <- "%d/%m/%Y %H:%M"
+   aisfile <- "./Phistachos_import-export.csv"
    aoifile <- "study_area.sqlite"
    gridfile <- "LME_2013_grid.sqlite"
-   vmax <- 20 ## km/h
+   vmax <- 12 ## km/h
    occasionalEnries <- 10L
 }
 ```
 
 ### Processing steps
 
-+ Source AIS data is transformed to spatial structure under simple features standards
++ Source AIS data is transformed to spatial structure under simple features standards.
 
 + All locations outside of study area are excluded.
 
