@@ -1,7 +1,3 @@
----
-echo: true
----
-
 # ASTDmapper
 
 Scripts for processing ASTD AIS data
