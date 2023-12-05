@@ -1,5 +1,5 @@
 */
-!phenology.R
 !10_define_study_area.R
 !20_create_grid.R
 !30_processing_by_seasons.R
+_*.*

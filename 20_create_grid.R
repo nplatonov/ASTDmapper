@@ -1,0 +1,16 @@
+require(ursa)
+reg <- ursa:::spatialize("LME_2013_polygon.shp",resetGrid=TRUE,crs=6931)
+res <- 20000
+spatial_grid(reg)
+reg <- spatial_buffer(reg,res/2)
+spatial_grid(reg)
+session_grid(regrid(res=res))
+session_grid()
+a <- ursa:::.fasterize(spatial_union(reg))
+a
+# display(a)
+b <- polygonize(a)
+spatial_data(b) <- data.frame(cell=1000000L+seq(spatial_count(b)))
+series(spatial_data(b))
+# glance(b)
+spatial_write(b,"LME_2013_grid.shp",compress=TRUE)
