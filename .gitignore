@@ -1,5 +1,8 @@
 */
 *.R
+*.R.*
+*.csv
+*.csv.gz
 *.shp.zip
 *.geojson
 *.geojson.gz
