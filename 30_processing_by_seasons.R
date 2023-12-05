@@ -1,4 +1,4 @@
-if (!require(ursa)) {
+ if (!require(ursa)) {
    stop("Needs required packages 'digest', 'ursa' and 'fasterize' and optional package 'qs'")
 }
 release <- FALSE # (digest::digest(Sys.getenv("USERNAME"),"crc32")=="423c1bf6") ## devel
