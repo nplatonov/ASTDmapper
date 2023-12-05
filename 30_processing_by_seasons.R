@@ -4,6 +4,7 @@ if (!require(ursa)) {
 release <- digest::digest(Sys.getenv("USERNAME"),"crc32")!="423c1bf6"
 if (release) {
    separator <- ";"
+   dateTimeFormat <- "%Y-%m-%d %H:%M:%S"
    aisfile <- "C:\\Boris\\PAMPAN\\compatibility\\ASTD work\\ASTD_area_level3_202302.csv"
    aoifile <- "C:\\Boris\\PAMPAN\\compatibility\\ASTD work\\LME_2013_polygon.shp"
    gridfile <- "C:\\Boris\\PAMPAN\\compatibility\\ASTD work\\LME_2013_grid.shp.zip"
@@ -11,15 +12,17 @@ if (release) {
    occasionalEnries <- 10L
 } else {
    separator <- ","
-   aisfile <- "Bananas_import-export.csv"
+   dateTimeFormat <- "%d/%m/%Y %H:%M"
+   aisfile <- "bananas/Phistachos_import-export.csv"
+  # aisfile <- "Bananas_import-export.csv"
    aoifile <- "study_area.sqlite"
-   gridfile <- "LME_2013_grid.shp"
-   vmax <- 20 ## km/h
+   gridfile <- "LME_2013_grid.sqlite"
+   vmax <- 12 ## km/h
    occasionalEnries <- 10L
 }
-stopifnot(file.exists(aisfile <- dir(path=dirname(aisfile)
-                                    ,pattern=basename(aisfile)
-                                    ,recursive=FALSE,full.names=TRUE)))
+aisfile <- dir(path=dirname(aisfile),pattern=basename(aisfile)
+              ,recursive=FALSE,full.names=TRUE)
+stopifnot(length(aisfile)==1)
 stopifnot(length(spatial_dir(aoifile))==1L)
 stopifnot(length(spatial_dir(gridfile))==1L)
 prelimDrop <- FALSE
@@ -200,15 +203,14 @@ prelimDrop <- FALSE
    a <- read.csv(aisfile,sep=separator)
    ursa:::.elapsedTime("AIS reading -- finish")
    colnames(a)[grep("latitude",colnames(a))] <- "latitude"
+   a <- a[!is.na(a$longitude) & !is.na(a$longitude),]
    a <- sf::st_as_sf(a,coords=c("longitude","latitude"),crs=4326)
    ursa:::.elapsedTime("AIS is in spatial format now")
   # print(c('AIS CRS'=spatial_crs(a)))
    # summary(spatial_coordinates(a)) |> print()
   # spatial_crs(a) |> print()
    # summary(spatial_coordinates(a)) |> print()
-   d3 <- as.POSIXct(a$date_time_utc,format="%Y-%m-%d %H:%M:%S",tz="UTC")
-   if (all(is.na(d3)))
-      d3 <- as.POSIXct(a$date_time_utc,format="%d/%m/%Y %H:%M",tz="UTC")
+   d3 <- as.POSIXct(a$date_time_utc,format=dateTimeFormat,tz="UTC")
    if (all(is.na(d3)))
       stop("Please check datetime format in source")
    ursa:::.elapsedTime("datetime is in POSIX format now")
@@ -295,6 +297,11 @@ prelimDrop <- FALSE
    g1 <- allocate(spatial_centroid(grd),resetGrid=TRUE)
    ret <- lapply(res,\(c2) {
       s <- unique(format(c2$date_time_utc,"%Y%m"))
+      fileout <- paste0("heatmap",s,".tif")
+      if (file.exists(fileout)) {
+         message(sQuote(fileout)," is ready. Skipping")
+         return(NULL)
+      }
       if (length(s)!=1) {
          print(s)
          stop("Damaged season splitting")
@@ -323,12 +330,11 @@ prelimDrop <- FALSE
       ind <- ursa_value(r2) %in% d2$cell
       ursa_value(r2)[!ind] <- NA
       ursa_value(r2)[ind] <- d2$duration
-      fileout <- paste0("heatmap",s,".tif")
       ursa_write(r2,fileout)
       r3 <- ursa_crop(r2,border=1)
       print(r3)
       try(display(r3,fileout=gsub("\\..+$",".png",fileout),bpp=8
-             ,stretch="positive",blank="white",coast.fill="#00000010"))
+             ,stretch="equal",blank="white",coast.fill="#00000010"))
       ursa:::.elapsedTime(paste("completed for",sQuote(s),"season"))
    })
    0L

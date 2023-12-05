@@ -131,6 +131,6 @@ if (release) {
 
 + Speed filter ([Freitas et al., 2008](https://dx.doi.org/10.1111/j.1748-7692.2007.00180.x)) is applied to remove spikes in trajectory using speed threshold.
 
-+ Weighted cell aggregating for individual vessels based on attribute `sec_nextpoint`, which is interpreded as a residence time for given location.
++ Weighted cell aggregating for individual vessels based on attribute `sec_nextpoint`, which is interpreted as a residence time for given location.
 
 + Non-weighted cell aggregation for all vessels. Units are "days per period". It is expected monthly periods, and units are "days per month".
