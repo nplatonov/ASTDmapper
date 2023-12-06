@@ -1,8 +1,8 @@
-require(ursa)
+source("common.R")
 if (F) {
-   aoi <- "LME_2013_polygon.shp" |> spatial_read() |> spatial_transform(4326)
+   aoi <- pamefile |> spatial_read() |> spatial_transform(4326)
    xy <- spatial_coordinates(aoi) |> do.call(rbind,args=_) |> do.call(rbind,args=_)
-   summary(xy) |> print() ## find minimal latitude here
+   summary(xy) |> print() ## estimate minimal latitude 'lat0' here
 }
 lat0 <- 49.75
 if (F) {
@@ -10,17 +10,17 @@ if (F) {
    xy <- sf::st_polygon(list(xy))
    xy <- sf::st_sfc(xy,crs=4326)
    xy <- sf::st_sf(foo="bar",geometry=xy)
-   xy <- sf::st_transform(xy,6931)
+   xy <- sf::st_transform(xy,gridCRS)
    str(xy)
    # xy <- sf::st_segmentize(xy,10000)
    glance(xy)
    q()
 }
 north <- ursa:::spatialize(c(-180,lat0,180,90),crs=4326)
-north <- sf::st_transform(north,6931) |> sf::st_union()
+north <- sf::st_transform(north,gridCRS) |> sf::st_union()
 # glance(north,resetGrid=TRUE,decor=FALSE,blank="white")
 session_grid(NULL)
-land <- "simplified_land_polygons.shp" |>
+land <- landfile |>
    spatial_read() |>
    spatial_transform(4326)
 ind <- sapply(spatial_coordinates(land),\(xy) {
@@ -37,9 +37,9 @@ if (F) {
 # str(land)
 # spatial_data(land) <- data.frame(id=1L) # 10000L+seq(spatial_count(land)))
 session_grid(NULL)
-aoi <- "LME_2013_polygon.shp" |>
+aoi <- pamefile |>
    spatial_read() |>
-   spatial_transform(6931) |>
+   spatial_transform(gridCRS) |>
    spatial_union() |>
   # sf::st_combine() |>
    spatial_buffer(20*1e3)
@@ -59,5 +59,5 @@ aoi <- spatial_intersection(aoi,ocean)
 spatial_data(aoi) <- data.frame(desc="Mask for ASTD data")
 ursa:::.elapsedTime("spatial intersection -- finish")
 str(aoi)
+spatial_write(aoi,aoifile,compress=TRUE)
 glance(aoi)
-spatial_write(aoi,"study_area.sqlite",compress=TRUE)

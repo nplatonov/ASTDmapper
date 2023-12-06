@@ -1,30 +1,13 @@
-if (!require(ursa)) {
-   stop("Needs required packages 'digest', 'ursa' and 'fasterize' and optional package 'qs'")
-}
-release <- FALSE # (digest::digest(Sys.getenv("USERNAME"),"crc32")=="423c1bf6") ## devel
+source("common.R")
 if (release) {
-   separator <- ";"
-   dateTimeFormat <- "%Y-%m-%d %H:%M:%S"
    aisfile <- "C:\\Boris\\PAMPAN\\compatibility\\ASTD work\\ASTD_area_level3_202302.csv"
-   aoifile <- "C:\\Boris\\PAMPAN\\compatibility\\ASTD work\\LME_2013_polygon.shp"
-   gridfile <- "C:\\Boris\\PAMPAN\\compatibility\\ASTD work\\LME_2013_grid.shp.zip"
-   vmax <- 60 ## km/h
-   occasionalEnries <- 10L
 } else {
-   separator <- ","
-   dateTimeFormat <- "%d/%m/%Y %H:%M"
    aisfile <- "./Phistachos_import-export.csv"
-   aoifile <- "study_area.sqlite"
-   gridfile <- "LME_2013_grid.sqlite"
-   vmax <- 12 ## km/h
-   occasionalEnries <- 10L
 }
 aisfile <- dir(path=dirname(aisfile),pattern=basename(aisfile)
               ,recursive=FALSE,full.names=TRUE)
 stopifnot(length(aisfile)==1)
 stopifnot(length(spatial_dir(aoifile))==1L)
-stopifnot(length(spatial_dir(gridfile))==1L)
-prelimDrop <- FALSE
 'speedFilter' <- function(src,vmax=vmax*10/36,verbose=FALSE) {
    if (verbose)
       print(spatial_count(src))
@@ -132,71 +115,7 @@ prelimDrop <- FALSE
    print(c('Records after AOI cropping'=spatial_count(a)))
    a
 }
-'interim_read' <- function(patt,list=TRUE,verbose=FALSE) {
-   res <- NULL
-   if (length(list1 <- spatial_dir(paste0(patt)))>0) {
-      if (verbose)
-         print(list1)
-      ursa:::.elapsedTime("spatial read -- start")
-      res <- lapply(list1,spatial_read)
-      ursa:::.elapsedTime("spatial read -- finish")
-   }
-   if (!is.list(res))
-      requireNamespace("sf")
-   if (!is.list(res)) {
-      if (length(list1 <- dir(pattern=paste0(patt,"\\.qs$")))>0) {
-         if (verbose)
-            print(list1)
-         ursa:::.elapsedTime("qs read -- start")
-         res <- try(lapply(list1,qs::qread))
-         ursa:::.elapsedTime("qs read -- finish")
-      }
-   }
-   if (!is.list(res)) {
-      if (length(list1 <- dir(pattern=paste0(patt,"\\.rds$")))>0) {
-         if (verbose)
-            print(list1)
-         ursa:::.elapsedTime("RDS read -- start")
-         res <- lapply(list1,readRDS)
-         ursa:::.elapsedTime("RDS read -- finish")
-      }
-   }
-   if (!is.list(res)) {
-      if (length(list1 <- dir(pattern=paste0(patt,"\\.csv(\\.gz)*$")))>0) {
-         if (verbose)
-            print(list1)
-         ursa:::.elapsedTime("CSV read -- start")
-         res <- lapply(list1,\(fname) {
-            a <- read.csv(fname,sep=";")
-            a <- sf::st_as_sf(a,coords=c("longitude","latitude"),crs=4326)
-            a$date_time_utc <- as.POSIXct(a$date_time_utc,tz="UTC")
-            a
-         })
-         ursa:::.elapsedTime("CSV read -- finish")
-      }
-   }
-   if (!is.list(res))
-      stop("TODO for reading interim files")
-   res
-}
-'interim_write' <- function(obj,fname) {
-   if (FALSE) {
-      ursa:::.elapsedTime("spatial write -- start")
-      ret <- spatial_write(obj,paste0(fname,".sqlite"),compress=TRUE)
-      ursa:::.elapsedTime("spatial write -- finish")
-      return(ret)
-   }
-   ursa:::.elapsedTime("qs write -- start")
-   ret <- try(qs::qsave(obj,paste0(fname,".qs")))
-   ursa:::.elapsedTime("qs write -- finish")
-   if (inherits(ret,"try-error")) {
-      ursa:::.elapsedTime("rds write -- start")
-      ret <- saveRDS(obj,paste0(fname,".rds"))
-      ursa:::.elapsedTime("rds write -- finish")
-   }
-   ret
-}
-'step1' <- function() {
+'main' <- function() {
    #unique(spatial_area(aoi)*1e-6)
    ursa:::.elapsedTime("AIS reading -- start")
    a <- read.csv(aisfile,sep=separator)
@@ -218,17 +137,6 @@ prelimDrop <- FALSE
    ursa:::.elapsedTime("Fall into AOI -- start")
    a <- aoiFilter(a)
    ursa:::.elapsedTime("Fall into AOI -- finish")
-   interim_write(a,"interim")
-   a
-}
-'step2' <- function(a,devel=FALSE) {
-   session_grid(NULL)
-   if (missing(a)) {
-     # ursa:::.elapsedTime("geojson read -- start")
-     # a <- spatial_read("interim.geojson.geojson")
-      a <- interim_read("interim")[[1]]
-     # ursa:::.elapsedTime("geojson read -- finish")
-   }
    print(c('Records for all seasons'=spatial_count(a)))
    season <- format(a$date_time_utc,"%Y%m")
    print(c(seasons=table(season)))
@@ -285,61 +193,7 @@ prelimDrop <- FALSE
    })
    res
 }
-'step3' <- function(res) {
-   session_grid(NULL)
-   ursa:::.elapsedTime("Grid reading -- start")
-   grd <- spatial_read(gridfile)
-   ursa:::.elapsedTime("Grid reading -- finish")
-   if (missing(res)) {
-      res <- interim_read(".*interim.*\\d{6}.*")
-   }
-   g1 <- allocate(spatial_centroid(grd),resetGrid=TRUE)
-   ret <- lapply(res,\(c2) {
-      s <- unique(format(c2$date_time_utc,"%Y%m"))
-      fileout <- paste0("heatmap",s,".tif")
-      if (file.exists(fileout)) {
-         message(sQuote(fileout)," is ready. Skipping")
-         return(NULL)
-      }
-      if (length(s)!=1) {
-         print(s)
-         stop("Damaged season splitting")
-      }
-      if (!prelimDrop) {
-         print(c('Records before grid seeding'=spatial_count(c2)))
-         ursa:::.elapsedTime("seeding within grid -- start")
-         c2 <- spatial_intersection(grd,spatial_transform(c2,grd))
-         ursa:::.elapsedTime("seeding within grid -- finish")
-         print(c('Records after grid seeding'=spatial_count(c2)))
-      }
-      cond <- list(cell=c2$cell,shipid=c2$shipid)
-      ursa:::.elapsedTime("aggregating individual ships -- start")
-      d <- aggregate(list(duration=c2$sec_nextpoint),cond,sum)
-      d$duration <- d$duration/(24*60*60)
-      d$firstentry <- aggregate(list(x=c2$date_time_utc),cond,min)$x
-      d$lastentry <- aggregate(list(x=c2$date_time_utc),cond,max)$x
-      ursa:::.elapsedTime("aggregating individual ships -- finish")
-      print(series(d))
-      ursa:::.elapsedTime("aggregating all ships -- start")
-      d2 <- aggregate(list(duration=d$duration),by=list(cell=d$cell),sum)
-      ursa:::.elapsedTime("aggregating all ships -- finish")
-      print(series(d2))
-      r2 <- g1
-     # save(r2,d2,file="interim.Rdata")
-      ind <- ursa_value(r2) %in% d2$cell
-      ursa_value(r2)[!ind] <- NA
-      ursa_value(r2)[ind] <- d2$duration
-      ursa_write(r2,fileout)
-      r3 <- ursa_crop(r2,border=1)
-      print(r3)
-      try(display(r3,fileout=gsub("\\..+$",".png",fileout),bpp=8
-             ,stretch="equal",blank="white",coast.fill="#00000010"))
-      ursa:::.elapsedTime(paste("completed for",sQuote(s),"season"))
-   })
-   0L
-}
 invisible({
-   step1()
-   step2()
-   step3()
+   if (!interactive())
+      main()
 })
