@@ -182,12 +182,14 @@ stopifnot(length(spatial_dir(aoifile))==1L)
       ursa:::.elapsedTime("speed filter -- finish")
       print(c('Records after speed filtering'=spatial_count(c2)))
       interim_write(c2,paste0("interim",s))
-      if (T) {
+      if (release) {
+         ursa:::.elapsedTime("write CSV -- start")
          c2 <- spatial_transform(c2,4326)
          xy <- spatial_coordinates(c2)
          ret <- cbind(spatial_data(c2),longitude=xy[,1],latitude=xy[,2])
          write.table(ret,paste0("interim",s,".csv")
                     ,sep=";",row.names=FALSE,quote=FALSE)
+         ursa:::.elapsedTime("write CSV -- finish")
       }
       ursa:::.elapsedTime(paste("completed for",sQuote(s),"season"))
    })
