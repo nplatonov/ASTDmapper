@@ -151,7 +151,7 @@ Use R-script
 
 + `30_processing_by_seasons.R`
 
-for data filtering and map producing.
+for data filtering.
 
 Processing steps:
 
